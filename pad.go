@@ -4,7 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/scgolang/launchpad"
+	"github.com/scgolang/metro"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -12,11 +14,16 @@ const (
 	// NumTracks is the number of tracks the sequencer has.
 	NumTracks = 8
 
-	// MaxSteps is the maximum number of steps per track.
-	MaxSteps = 64
+	NumBanks = 8
 
-	Xmax = 7
-	Ymax = 7
+	// Xmax is the index of the maximum x step.
+	Xmax = 8
+
+	// Ymax is the index of the maximum y step.
+	Ymax = 8
+
+	// MaxSteps is the maximum number of steps per track.
+	MaxSteps = Xmax * Ymax
 )
 
 // Launchpad wraps a *launchpad.Launchpad with methods
@@ -25,58 +32,51 @@ type Launchpad struct {
 	*launchpad.Launchpad
 	*errgroup.Group
 
-	ctx context.Context
+	ctx          context.Context
+	currentBank  int // 8 sample banks
+	currentTrack int
+	initialTempo float32
+	periodChan   chan time.Duration
+	samplesChan  chan int
+	tickChan     chan *Pos
+	tracks       [NumBanks][NumTracks][MaxSteps]int
 }
 
 // OpenLaunchpad opens a connection to a launchpad.
-func OpenLaunchpad(ctx context.Context) (*Launchpad, error) {
-	lpad, err := launchpad.Open()
+func OpenLaunchpad(ctx context.Context, samplesChan chan int, initialTempo float32) (*Launchpad, error) {
+	padBase, err := launchpad.Open()
 	if err != nil {
 		return nil, err
 	}
 	g, gctx := errgroup.WithContext(ctx)
-	return &Launchpad{
-		Launchpad: lpad,
-		Group:     g,
-		ctx:       gctx,
-	}, nil
+
+	pad := &Launchpad{
+		Launchpad:    padBase,
+		Group:        g,
+		ctx:          gctx,
+		initialTempo: initialTempo,
+		periodChan:   make(chan time.Duration, 1),
+		samplesChan:  samplesChan,
+		tickChan:     make(chan *Pos),
+	}
+	if err := pad.Reset(); err != nil {
+		return nil, errors.Wrap(err, "resetting pad")
+	}
+	if err := pad.Select(pad.currentBank, pad.currentTrack, false); err != nil {
+		return nil, errors.Wrap(err, "selecting current track")
+	}
+	return pad, nil
 }
 
-func (pad *Launchpad) Main() {
-	pad.Go(pad.listen)
-	pad.Go(pad.loop)
-}
+func (pad *Launchpad) LightCurrentTrack() error {
+	pos := &Pos{}
 
-// loop is the main loop for the launchpad sequencer.
-func (pad *Launchpad) loop() error {
-	prevX, prevY := 0, 0
-	x, y := 0, 0
-
-	for _ = range time.NewTicker(200 * time.Millisecond).C {
-		// Light the current button.
-		pad.Light(x, y, 0, 3)
-
-		if x == prevX && y == prevY {
-			// We've just started, so the next button is (1, 0).
-			x += 1
-			continue
+	for i := 0; i < MaxSteps; i++ {
+		color := pad.tracks[pad.currentBank][pad.currentTrack][i]
+		if err := pad.Light(pos.X, pos.Y, color, 0); err != nil {
+			return err
 		}
-
-		// Turn off the previous button.
-		pad.Light(prevX, prevY, 0, 0)
-
-		// Store then increment the position.
-		prevX, prevY = x, y
-		if x == Xmax {
-			x = 0
-			if y == Ymax {
-				y = 0
-			} else {
-				y++
-			}
-		} else {
-			x++
-		}
+		pos.Increment()
 	}
 	return nil
 }
@@ -87,15 +87,170 @@ HitLoop:
 	for hit := range pad.Listen() {
 		x, y := hit.X, hit.Y
 
-		if y == 8 {
+		if y == Ymax {
 			// Top row is the pattern switcher.
-			pad.Select(x)
+			if err := pad.Select(pad.currentBank, x, true); err != nil {
+				return errors.Wrap(err, "selecting new track")
+			}
 			continue HitLoop
+		}
+		if x == Xmax {
+			// TODO: what to do with buttons A - H
+			if err := pad.Select(y, pad.currentTrack, true); err != nil {
+				return errors.Wrap(err, "selecting new track")
+			}
+			continue HitLoop
+		}
+		if err := pad.toggle(x, y); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// Select selects a pattern.
-func (pad *Launchpad) Select(pattern int) {
+func (pad *Launchpad) lit(step int) bool {
+	return pad.tracks[pad.currentBank][pad.currentTrack][step] > 0
+}
+
+// loop controls which step the sequencer is playing.
+func (pad *Launchpad) loop() error {
+TickerLoop:
+	for pos := range pad.tickChan {
+		var (
+			prevX, prevY = pos.PrevX, pos.PrevY
+			x, y         = pos.X, pos.Y
+		)
+		// Light the current button.
+		if err := pad.Light(x, y, 0, 2); err != nil {
+			return errors.Wrap(err, "lighting pad")
+		}
+		if x == prevX && y == prevY {
+			// We've just started, so we don't have to do anything
+			// with the previous position.
+			continue TickerLoop
+		}
+		var (
+			prevStep  = makeStep(prevX, prevY)
+			prevColor = pad.tracks[pad.currentBank][pad.currentTrack][prevStep]
+		)
+		// Turn off the previous button.
+		if err := pad.Light(prevX, prevY, prevColor, 0); err != nil {
+			return errors.Wrap(err, "lighting pad")
+		}
+	}
+	return nil
+}
+
+// Main is the main loop of the launchpad.
+func (pad *Launchpad) Main() error {
+	pad.Go(pad.listen)
+	pad.Go(pad.loop)
+	pad.Go(pad.ticker)
+	return pad.Wait()
+}
+
+func (pad *Launchpad) sampleNum() int {
+	return (NumTracks * pad.currentBank) + pad.currentTrack
+}
+
+// Select selects a track.
+func (pad *Launchpad) Select(bank, track int, trigger bool) error {
+	pad.currentBank = bank
+	pad.currentTrack = track
+
+	if trigger {
+		pad.samplesChan <- pad.sampleNum()
+	}
+	if err := pad.Light(pad.currentTrack, 8, 0, 0); err != nil {
+		return errors.Wrap(err, "lighting button")
+	}
+	if err := pad.Light(8, pad.currentBank, 0, 0); err != nil {
+		return errors.Wrap(err, "lighting button")
+	}
+	if err := pad.Reset(); err != nil {
+		return errors.Wrap(err, "resetting pad")
+	}
+
+	// TODO: change out the pattern displayed on the grid
+	if err := pad.LightCurrentTrack(); err != nil {
+		return errors.Wrap(err, "lightning current track")
+	}
+	if err := pad.Light(track, 8, 0, 3); err != nil {
+		return errors.Wrap(err, "lighting button")
+	}
+	if err := pad.Light(8, bank, 0, 3); err != nil {
+		return errors.Wrap(err, "lighting button")
+	}
+	return nil
+}
+
+// ticker runs the ticker.
+func (pad *Launchpad) ticker() error {
+	var (
+		pos    = &Pos{}
+		tempo  = pad.initialTempo
+		ticker = metro.New(tempo * float32(4))
+	)
+	pad.tickChan <- pos
+	ticker.Start()
+	for range ticker.Ticks() {
+		for i := 0; i < NumBanks; i++ {
+			for j := 0; j < NumTracks; j++ {
+				if pad.tracks[i][j][makeStep(pos.X, pos.Y)] > 0 {
+					// Play the first sample.
+					pad.samplesChan <- (NumTracks * i) + j
+				}
+			}
+		}
+		// Send a tick.
+		pad.tickChan <- pos
+		pos.Increment()
+	}
+	return nil
+}
+
+// toggle toggles a step for the current track.
+func (pad *Launchpad) toggle(x, y int) error {
+	step := makeStep(x, y)
+
+	if pad.lit(step) {
+		if err := pad.Light(x, y, 0, 0); err != nil {
+			return errors.Wrap(err, "lighting pad")
+		}
+		pad.tracks[pad.currentBank][pad.currentTrack][step] = 0
+	} else {
+		if err := pad.Light(x, y, 3, 0); err != nil {
+			return errors.Wrap(err, "lighting pad")
+		}
+		pad.tracks[pad.currentBank][pad.currentTrack][step] = 3
+	}
+	return nil
+}
+
+// makeStep returns the step for a given (x, y) position
+func makeStep(x, y int) int {
+	return (y * Ymax) + x
+}
+
+// Pos describes the x, y position on the launchpad.
+type Pos struct {
+	PrevX int
+	PrevY int
+	X     int
+	Y     int
+}
+
+// Increment increments the position.
+func (pos *Pos) Increment() {
+	pos.PrevX, pos.PrevY = pos.X, pos.Y
+	if pos.X+1 == Xmax {
+		pos.X = 0
+		if pos.Y+1 == Ymax {
+			pos.Y = 0
+			return
+		}
+		pos.Y++
+		return
+	}
+	pos.X++
 }

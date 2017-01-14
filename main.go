@@ -2,20 +2,39 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 )
 
 func main() {
-	pad, err := OpenLaunchpad(context.Background())
+	var (
+		ctx          = context.Background()
+		initialTempo float64
+		dir          string
+	)
+	flag.Float64Var(&initialTempo, "t", float64(120), "tempo")
+	flag.StringVar(&dir, "d", ".", "samples directory")
+	flag.Parse()
+
+	samples, err := NewSamples(ctx, dir)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer pad.Close()
+	<-samples.LoadedChan
 
-	pad.Reset()
-	pad.Main()
+	pad, err := OpenLaunchpad(ctx, samples.SampleChan, float32(initialTempo))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = pad.Close() }() // Best effort.
 
-	if err := pad.Wait(); err != nil {
+	go func() {
+		if err := samples.Main(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	if err := pad.Main(); err != nil {
 		log.Fatal(err)
 	}
 }
