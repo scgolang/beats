@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/pkg/errors"
@@ -73,6 +74,7 @@ func (pad *Launchpad) LightCurrentTrack() error {
 	for i := 0; i < MaxSteps; i++ {
 		color := pad.tracks[pad.currentBank][pad.currentTrack][i]
 		if err := pad.Light(pos.X, pos.Y, color, 0); err != nil {
+			log.Printf("error lighting pad: %s\n", err)
 			return err
 		}
 		pos.Increment()
@@ -163,9 +165,11 @@ func (pad *Launchpad) Select(bank, track int, trigger bool) error {
 		pad.samplesChan <- pad.sampleNum()
 	}
 	if err := pad.Light(pad.currentTrack, 8, 0, 0); err != nil {
+		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
 	if err := pad.Light(8, pad.currentBank, 0, 0); err != nil {
+		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
 	if err := pad.Reset(); err != nil {
@@ -177,9 +181,11 @@ func (pad *Launchpad) Select(bank, track int, trigger bool) error {
 		return errors.Wrap(err, "lightning current track")
 	}
 	if err := pad.Light(track, 8, 0, 3); err != nil {
+		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
 	if err := pad.Light(8, bank, 0, 3); err != nil {
+		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
 	return nil

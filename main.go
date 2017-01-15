@@ -13,7 +13,7 @@ func main() {
 		dir          string
 	)
 	flag.Float64Var(&initialTempo, "t", float64(120), "tempo")
-	flag.StringVar(&dir, "d", ".", "samples directory")
+	flag.StringVar(&dir, "d", "samples", "samples directory")
 	flag.Parse()
 
 	samples, err := NewSamples(ctx, dir)
