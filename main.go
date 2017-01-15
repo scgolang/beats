@@ -22,7 +22,7 @@ func main() {
 	}
 	<-samples.LoadedChan
 
-	pad, err := OpenLaunchpad(ctx, samples.SampleChan, float32(initialTempo))
+	pad, err := OpenLaunchpad(ctx, samples.SampleChan, initialTempo)
 	if err != nil {
 		log.Fatal(err)
 	}

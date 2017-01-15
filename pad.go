@@ -6,7 +6,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/scgolang/launchpad"
-	"github.com/scgolang/metro"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -35,7 +34,7 @@ type Launchpad struct {
 	ctx          context.Context
 	currentBank  int // 8 sample banks
 	currentTrack int
-	initialTempo float32
+	initialTempo float64
 	periodChan   chan time.Duration
 	samplesChan  chan int
 	tickChan     chan *Pos
@@ -43,7 +42,7 @@ type Launchpad struct {
 }
 
 // OpenLaunchpad opens a connection to a launchpad.
-func OpenLaunchpad(ctx context.Context, samplesChan chan int, initialTempo float32) (*Launchpad, error) {
+func OpenLaunchpad(ctx context.Context, samplesChan chan int, initialTempo float64) (*Launchpad, error) {
 	padBase, err := launchpad.Open()
 	if err != nil {
 		return nil, err
@@ -189,11 +188,13 @@ func (pad *Launchpad) ticker() error {
 	var (
 		pos    = &Pos{}
 		tempo  = pad.initialTempo
-		ticker = metro.New(tempo * float32(4))
+		period = bpmToDuration(tempo)
 	)
+
+	// Send initial position.
 	pad.tickChan <- pos
-	ticker.Start()
-	for range ticker.Ticks() {
+
+	for {
 		for i := 0; i < NumBanks; i++ {
 			for j := 0; j < NumTracks; j++ {
 				if pad.tracks[i][j][makeStep(pos.X, pos.Y)] > 0 {
@@ -205,6 +206,7 @@ func (pad *Launchpad) ticker() error {
 		// Send a tick.
 		pad.tickChan <- pos
 		pos.Increment()
+		time.Sleep(period)
 	}
 	return nil
 }
@@ -230,6 +232,15 @@ func (pad *Launchpad) toggle(x, y int) error {
 // makeStep returns the step for a given (x, y) position
 func makeStep(x, y int) int {
 	return (y * Ymax) + x
+}
+
+// nsPerMinute is the number of nanoseconds in a minute.
+const nsPerMinute = float64(60e9)
+
+// bpmToDuration returns a time.Duration that represents the duration
+// of a quarter note at the specified bpm.
+func bpmToDuration(bpm float64) time.Duration {
+	return time.Duration(nsPerMinute / bpm)
 }
 
 // Pos describes the x, y position on the launchpad.

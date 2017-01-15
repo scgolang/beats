@@ -71,7 +71,7 @@ func (s *Samples) loadSamples() error {
 		return errors.Wrap(err, "listing files with wildcard pattern")
 	}
 	for i, sample := range samples {
-		if i >= NumTracks {
+		if i >= NumTracks*NumBanks {
 			break
 		}
 		if err := s.load(int32(i), sample); err != nil {
