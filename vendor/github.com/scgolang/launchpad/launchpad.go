@@ -40,6 +40,10 @@ type Hit struct {
 // stream to the currently connected device. If there are no
 // devices are connected, it returns an error.
 func Open() (*Launchpad, error) {
+	if err := portmidi.Initialize(); err != nil {
+		return nil, err
+	}
+
 	input, output, err := discover()
 	if err != nil {
 		return nil, err
@@ -56,9 +60,9 @@ func Open() (*Launchpad, error) {
 }
 
 // Listen listens the input stream for hits.
-func (l *Launchpad) Listen() <-chan []Hit {
-	ch := make(chan []Hit)
-	go func(pad *Launchpad, ch chan []Hit) {
+func (l *Launchpad) Listen() <-chan Hit {
+	ch := make(chan Hit)
+	go func(pad *Launchpad, ch chan Hit) {
 		for {
 			// sleep for a while before the new polling tick,
 			// otherwise operation is too intensive and blocking
@@ -67,7 +71,9 @@ func (l *Launchpad) Listen() <-chan []Hit {
 			if err != nil {
 				continue
 			}
-			ch <- hits
+			for i := range hits {
+				ch <- hits[i]
+			}
 		}
 	}(l, ch)
 	return ch
@@ -119,6 +125,7 @@ func (l *Launchpad) Reset() error {
 }
 
 func (l *Launchpad) Close() error {
+	portmidi.Terminate()
 	l.inputStream.Close()
 	l.outputStream.Close()
 	return nil

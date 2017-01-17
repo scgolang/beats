@@ -1,5 +1,5 @@
 hash: 470b1fff7f1f7b0f73d2751d1bac48c8c954460c0b92cf0cae3215495cf2a398
-updated: 2017-01-15T08:03:16.99192156-06:00
+updated: 2017-01-17T08:22:01.499644392-06:00
 imports:
 - name: github.com/awalterschulze/gographviz
   version: 224d2284f4a707f4897baa9103580b7657c898fd
@@ -14,11 +14,11 @@ imports:
 - name: github.com/rakyll/portmidi
   version: b18948bbf1f7047ebaebcbd9ca47bdcccff70646
 - name: github.com/scgolang/launchpad
-  version: aaca54c320b7991df29dcbe22af9dfdce7816084
+  version: e55db1a6cbfe3923b7026734604a2dd041964988
 - name: github.com/scgolang/osc
-  version: 7d8500324cb97d0db8a0e9834fc19799a79637c6
+  version: 876161d22dbc56517f1df8686a8ffc31daeab01f
 - name: github.com/scgolang/sc
-  version: ec15435572cd66fa3c680d32362339894592d5b3
+  version: dcfc5935bc6a13c84286dfac072254a0cd28dc41
 - name: golang.org/x/net
   version: f2499483f923065a842d38eb4c7f1927e6fc6e6d
   subpackages:

@@ -85,27 +85,25 @@ func (pad *Launchpad) LightCurrentTrack() error {
 // listen is an infinite loop that listens for touch events on the launchpad.
 func (pad *Launchpad) listen() error {
 HitLoop:
-	for hits := range pad.Listen() {
-		for _, hit := range hits {
-			x, y := hit.X, hit.Y
+	for hit := range pad.Listen() {
+		x, y := hit.X, hit.Y
 
-			if y == Ymax {
-				// Top row is the pattern switcher.
-				if err := pad.Select(pad.currentBank, x, true); err != nil {
-					return errors.Wrap(err, "selecting new track")
-				}
-				continue HitLoop
+		if y == Ymax {
+			// Top row is the pattern switcher.
+			if err := pad.Select(pad.currentBank, x, true); err != nil {
+				return errors.Wrap(err, "selecting new track")
 			}
-			if x == Xmax {
-				// TODO: what to do with buttons A - H
-				if err := pad.Select(y, pad.currentTrack, true); err != nil {
-					return errors.Wrap(err, "selecting new track")
-				}
-				continue HitLoop
+			continue HitLoop
+		}
+		if x == Xmax {
+			// TODO: what to do with buttons A - H
+			if err := pad.Select(y, pad.currentTrack, true); err != nil {
+				return errors.Wrap(err, "selecting new track")
 			}
-			if err := pad.toggle(x, y); err != nil {
-				return err
-			}
+			continue HitLoop
+		}
+		if err := pad.toggle(x, y); err != nil {
+			return err
 		}
 	}
 	return nil

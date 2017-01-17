@@ -3,7 +3,6 @@ package osc
 import (
 	"bytes"
 	"context"
-	"log"
 	"net"
 	"testing"
 	"time"
@@ -37,6 +36,17 @@ func TestDialUDP(t *testing.T) {
 	}
 }
 
+func TestDialUDPSetWriteBufferError(t *testing.T) {
+	uc := &UDPConn{udpConn: errConn{}}
+	_, err := uc.initialize()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if expected, got := `setting write buffer size: derp`, err.Error(); expected != got {
+		t.Fatalf("expected %s, got %s", expected, got)
+	}
+}
+
 func TestListenUDP(t *testing.T) {
 	if _, err := ListenUDP("asdfiauosweif", nil); err == nil {
 		t.Fatal("expected error, got nil")
@@ -56,7 +66,8 @@ func TestDialUDPContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctxTimeout, _ := context.WithTimeout(c.Context(), 20*time.Millisecond)
+	ctxTimeout, cancel := context.WithTimeout(c.Context(), 20*time.Millisecond)
+	defer cancel()
 	c.SetContext(ctxTimeout)
 	if c.Context() != ctxTimeout {
 		t.Fatalf("expected %+v to be %+v", ctxTimeout, c.Context())
@@ -114,6 +125,7 @@ func TestUDPConnSend_OK(t *testing.T) {
 	}
 }
 
+// errConn is an implementation of the udpConn interface that returns errors from all it's methods.
 type errConn struct {
 	udpConn
 }
@@ -122,12 +134,17 @@ func (e errConn) ReadFromUDP(b []byte) (int, *net.UDPAddr, error) {
 	return 0, nil, errors.New("oops")
 }
 
+func (e errConn) SetWriteBuffer(bytes int) error {
+	return errors.New("derp")
+}
+
 func TestUDPConnServe_ContextTimeout(t *testing.T) {
 	laddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	timeoutCtx, _ := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
 	server, err := ListenUDPContext(timeoutCtx, "udp", laddr)
 	if err != nil {
 		t.Fatal(err)
@@ -294,43 +311,6 @@ func TestUDPConnSendBundle_DispatchError(t *testing.T) {
 	expected, got := `error serving udp: dispatch bundle: oops`, err.Error()
 	if expected != got {
 		t.Fatal(err)
-	}
-}
-
-func ExampleUDPConn_Send() {
-	errChan := make(chan error)
-
-	// Setup the server.
-	laddr, err := net.ResolveUDPAddr("udp", "127.0.0.1:0")
-	if err != nil {
-		log.Fatal(err)
-	}
-	server, err := ListenUDP("udp", laddr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	go func() {
-		errChan <- server.Serve(map[string]Method{
-			"/close": func(msg Message) error {
-				return server.Close()
-			},
-		})
-	}()
-
-	// Setup the client.
-	raddr, err := net.ResolveUDPAddr("udp", server.LocalAddr().String())
-	if err != nil {
-		log.Fatal(err)
-	}
-	conn, err := DialUDP("udp", nil, raddr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := conn.Send(Message{Address: "/close"}); err != nil {
-		log.Fatal(err)
-	}
-	if err := <-errChan; err != nil {
-		log.Fatal(err)
 	}
 }
 
