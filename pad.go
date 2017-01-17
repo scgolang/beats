@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/pkg/errors"
 	"github.com/scgolang/launchpad"
-	"github.com/scgolang/metro"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -35,7 +35,7 @@ type Launchpad struct {
 	ctx          context.Context
 	currentBank  int // 8 sample banks
 	currentTrack int
-	initialTempo float32
+	initialTempo float64
 	periodChan   chan time.Duration
 	samplesChan  chan int
 	tickChan     chan *Pos
@@ -43,7 +43,7 @@ type Launchpad struct {
 }
 
 // OpenLaunchpad opens a connection to a launchpad.
-func OpenLaunchpad(ctx context.Context, samplesChan chan int, initialTempo float32) (*Launchpad, error) {
+func OpenLaunchpad(ctx context.Context, samplesChan chan int, initialTempo float64) (*Launchpad, error) {
 	padBase, err := launchpad.Open()
 	if err != nil {
 		return nil, err
@@ -74,6 +74,7 @@ func (pad *Launchpad) LightCurrentTrack() error {
 	for i := 0; i < MaxSteps; i++ {
 		color := pad.tracks[pad.currentBank][pad.currentTrack][i]
 		if err := pad.Light(pos.X, pos.Y, color, 0); err != nil {
+			log.Printf("error lighting pad: %s\n", err)
 			return err
 		}
 		pos.Increment()
@@ -84,25 +85,27 @@ func (pad *Launchpad) LightCurrentTrack() error {
 // listen is an infinite loop that listens for touch events on the launchpad.
 func (pad *Launchpad) listen() error {
 HitLoop:
-	for hit := range pad.Listen() {
-		x, y := hit.X, hit.Y
+	for hits := range pad.Listen() {
+		for _, hit := range hits {
+			x, y := hit.X, hit.Y
 
-		if y == Ymax {
-			// Top row is the pattern switcher.
-			if err := pad.Select(pad.currentBank, x, true); err != nil {
-				return errors.Wrap(err, "selecting new track")
+			if y == Ymax {
+				// Top row is the pattern switcher.
+				if err := pad.Select(pad.currentBank, x, true); err != nil {
+					return errors.Wrap(err, "selecting new track")
+				}
+				continue HitLoop
 			}
-			continue HitLoop
-		}
-		if x == Xmax {
-			// TODO: what to do with buttons A - H
-			if err := pad.Select(y, pad.currentTrack, true); err != nil {
-				return errors.Wrap(err, "selecting new track")
+			if x == Xmax {
+				// TODO: what to do with buttons A - H
+				if err := pad.Select(y, pad.currentTrack, true); err != nil {
+					return errors.Wrap(err, "selecting new track")
+				}
+				continue HitLoop
 			}
-			continue HitLoop
-		}
-		if err := pad.toggle(x, y); err != nil {
-			return err
+			if err := pad.toggle(x, y); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -162,9 +165,11 @@ func (pad *Launchpad) Select(bank, track int, trigger bool) error {
 		pad.samplesChan <- pad.sampleNum()
 	}
 	if err := pad.Light(pad.currentTrack, 8, 0, 0); err != nil {
+		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
 	if err := pad.Light(8, pad.currentBank, 0, 0); err != nil {
+		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
 	if err := pad.Reset(); err != nil {
@@ -176,9 +181,11 @@ func (pad *Launchpad) Select(bank, track int, trigger bool) error {
 		return errors.Wrap(err, "lightning current track")
 	}
 	if err := pad.Light(track, 8, 0, 3); err != nil {
+		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
 	if err := pad.Light(8, bank, 0, 3); err != nil {
+		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
 	return nil
@@ -189,11 +196,13 @@ func (pad *Launchpad) ticker() error {
 	var (
 		pos    = &Pos{}
 		tempo  = pad.initialTempo
-		ticker = metro.New(tempo * float32(4))
+		period = bpmToDuration(tempo)
 	)
+
+	// Send initial position.
 	pad.tickChan <- pos
-	ticker.Start()
-	for range ticker.Ticks() {
+
+	for {
 		for i := 0; i < NumBanks; i++ {
 			for j := 0; j < NumTracks; j++ {
 				if pad.tracks[i][j][makeStep(pos.X, pos.Y)] > 0 {
@@ -203,8 +212,13 @@ func (pad *Launchpad) ticker() error {
 			}
 		}
 		// Send a tick.
-		pad.tickChan <- pos
+		select {
+		default:
+		case pad.tickChan <- pos:
+		}
+		// Increment the position and sleep.
 		pos.Increment()
+		time.Sleep(period)
 	}
 	return nil
 }
@@ -230,6 +244,15 @@ func (pad *Launchpad) toggle(x, y int) error {
 // makeStep returns the step for a given (x, y) position
 func makeStep(x, y int) int {
 	return (y * Ymax) + x
+}
+
+// nsPerMinute is the number of nanoseconds in a minute.
+const nsPerMinute = float64(60e9)
+
+// bpmToDuration returns a time.Duration that represents the duration
+// of a quarter note at the specified bpm.
+func bpmToDuration(bpm float64) time.Duration {
+	return time.Duration(nsPerMinute / bpm)
 }
 
 // Pos describes the x, y position on the launchpad.
