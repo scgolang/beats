@@ -93,6 +93,7 @@ func (s *Samples) loadSamples() error {
 	return nil
 }
 
+// Main is the main loop of the sample player.
 func (s *Samples) Main() error {
 	s.Go(s.play)
 	return s.Wait()

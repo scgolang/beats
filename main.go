@@ -20,15 +20,15 @@ func main() {
 	flag.StringVar(&samplesDir, "samples", "samples", "samples directory")
 	flag.Parse()
 
-	samples, err := NewSamples(ctx, samplesDir)
-	if err != nil {
-		log.Fatal(err)
+	samples, samplesErr := NewSamples(ctx, samplesDir)
+	if samplesErr != nil {
+		log.Fatal(samplesErr)
 	}
 	<-samples.LoadedChan
 
-	pad, err := OpenLaunchpad(ctx, deviceID, samples.SampleChan, initialTempo)
-	if err != nil {
-		log.Fatal(err)
+	pad, padErr := OpenLaunchpad(ctx, deviceID, samples.SampleChan, initialTempo)
+	if padErr != nil {
+		log.Fatal(padErr)
 	}
 	defer func() { _ = pad.Close() }() // Best effort.
 
@@ -55,6 +55,11 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		println(line)
+		command := Command{
+			Done:  make(chan struct{}),
+			Input: line,
+		}
+		pad.CommandChan <- command
+		<-command.Done
 	}
 }

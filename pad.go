@@ -14,6 +14,7 @@ const (
 	// NumTracks is the number of tracks the sequencer has.
 	NumTracks = 8
 
+	// NumBanks is the number of sample banks.
 	NumBanks = 8
 
 	// Xmax is the index of the maximum x step.
@@ -26,11 +27,19 @@ const (
 	MaxSteps = Xmax * Ymax
 )
 
+type Command struct {
+	Input string
+	Done  chan struct{}
+}
+
 // Launchpad wraps a *launchpad.Launchpad with methods
 // that are relevant to controlling a sequencer.
 type Launchpad struct {
 	*launchpad.Launchpad
 	*errgroup.Group
+
+	CommandChan chan Command
+	Mode        int
 
 	ctx          context.Context
 	currentBank  uint8 // 8 sample banks
@@ -53,6 +62,7 @@ func OpenLaunchpad(ctx context.Context, deviceID string, samplesChan chan int, i
 	pad := &Launchpad{
 		Launchpad:    padBase,
 		Group:        g,
+		CommandChan:  make(chan Command),
 		ctx:          gctx,
 		initialTempo: initialTempo,
 		periodChan:   make(chan time.Duration, 1),
@@ -68,6 +78,43 @@ func OpenLaunchpad(ctx context.Context, deviceID string, samplesChan chan int, i
 	return pad, nil
 }
 
+func (pad *Launchpad) command(command Command) error {
+	// TODO: handle command
+	switch command.Input {
+	case "live":
+		pad.Mode = ModeLive
+	case "edit":
+		pad.Mode = ModeEdit
+		if err := pad.LightCurrentTrack(); err != nil {
+			return errors.Wrap(err, "lighting current track")
+		}
+	}
+	close(command.Done)
+	return nil
+}
+
+// displayEdit displays an edit mode in edit mode.
+func (pad *Launchpad) displayEdit(x, y uint8, color launchpad.Color) error {
+	// Skip displaying the pattern edits in live mode.
+	if pad.Mode == ModeLive {
+		return nil
+	}
+	return errors.Wrap(pad.Light(x, y, color), "lighting button")
+}
+
+// editPattern toggles a step in the current pattern.
+func (pad *Launchpad) editPattern(x, y uint8) error {
+	step := makeStep(x, y)
+
+	if pad.lit(step) {
+		pad.tracks[pad.currentBank][pad.currentTrack][step] = 0
+	} else {
+		pad.tracks[pad.currentBank][pad.currentTrack][step] = 3
+	}
+	return nil
+}
+
+// LightCurrentTrack lights the current track.
 func (pad *Launchpad) LightCurrentTrack() error {
 	pos := &Pos{}
 
@@ -108,7 +155,16 @@ HitLoop:
 			}
 			continue HitLoop
 		}
-		if err := pad.toggle(x, y); err != nil {
+		if err := pad.editPattern(x, y); err != nil {
+			return errors.Wrap(err, "editing pattern")
+		}
+		// If we're in live mode we don't toggle anything on the grid.
+		if pad.Mode == ModeLive {
+			println("live mode")
+			continue
+		}
+		// Toggle the button on the launchpad.
+		if err := pad.updatePattern(x, y); err != nil {
 			return err
 		}
 	}
@@ -119,33 +175,24 @@ func (pad *Launchpad) lit(step uint8) bool {
 	return pad.tracks[pad.currentBank][pad.currentTrack][step] > 0
 }
 
-// loop controls which step the sequencer is playing.
+// loop controls which step the sequencer is playing and receives commands that
+// change the behavior of the launchpad.
 func (pad *Launchpad) loop() error {
-TickerLoop:
-	for pos := range pad.tickChan {
-		var (
-			prevX, prevY = pos.PrevX, pos.PrevY
-			x, y         = pos.X, pos.Y
-		)
-		// Light the current button.
-		if err := pad.Light(x, y, launchpad.Color{Green: 0, Red: 2}); err != nil {
-			return errors.Wrap(err, "lighting pad")
-		}
-		if x == prevX && y == prevY {
-			// We've just started, so we don't have to do anything
-			// with the previous position.
-			continue TickerLoop
-		}
-		var (
-			prevStep  = makeStep(prevX, prevY)
-			prevColor = pad.tracks[pad.currentBank][pad.currentTrack][prevStep]
-		)
-		// Turn off the previous button.
-		if err := pad.Light(prevX, prevY, launchpad.Color{Green: prevColor, Red: 0}); err != nil {
-			return errors.Wrap(err, "lighting pad")
+	for {
+		select {
+		case command := <-pad.CommandChan:
+			if err := pad.command(command); err != nil {
+				return err
+			}
+		case pos := <-pad.tickChan:
+			if err := pad.tick(pos); err != nil {
+				return err
+			}
 		}
 	}
-	return nil
+}
+
+func (pad *Launchpad) liveRecording() {
 }
 
 // Main is the main loop of the launchpad.
@@ -195,6 +242,37 @@ func (pad *Launchpad) Select(bank, track uint8, trigger bool) error {
 	return nil
 }
 
+func (pad *Launchpad) tick(pos *Pos) error {
+	var (
+		prevX, prevY = pos.PrevX, pos.PrevY
+		x, y         = pos.X, pos.Y
+	)
+	// Light the current button.
+	if err := pad.Light(x, y, launchpad.Color{
+		Green: 0,
+		Red:   2,
+	}); err != nil {
+		return errors.Wrap(err, "lighting pad")
+	}
+	if x == prevX && y == prevY {
+		// We've just started, so we don't have to do anything
+		// with the previous position.
+		return nil
+	}
+	var (
+		prevStep  = makeStep(prevX, prevY)
+		prevColor = pad.tracks[pad.currentBank][pad.currentTrack][prevStep]
+	)
+	// Turn off the previous button.
+	if err := pad.Light(prevX, prevY, launchpad.Color{
+		Green: prevColor,
+		Red:   0,
+	}); err != nil {
+		return errors.Wrap(err, "lighting pad")
+	}
+	return nil
+}
+
 // ticker runs the ticker.
 func (pad *Launchpad) ticker() error {
 	var (
@@ -224,23 +302,20 @@ func (pad *Launchpad) ticker() error {
 		pos.Increment()
 		time.Sleep(period)
 	}
-	return nil
 }
 
-// toggle toggles a step for the current track.
-func (pad *Launchpad) toggle(x, y uint8) error {
+// updatePattern updates the displayed pattern for the step specified as x, y coordinates.
+func (pad *Launchpad) updatePattern(x, y uint8) error {
 	step := makeStep(x, y)
 
 	if pad.lit(step) {
-		if err := pad.Light(x, y, launchpad.Color{Green: 0, Red: 0}); err != nil {
-			return errors.Wrap(err, "lighting pad")
+		if err := pad.displayEdit(x, y, launchpad.Color{Green: 3, Red: 0}); err != nil {
+			return errors.Wrap(err, "toggling button")
 		}
-		pad.tracks[pad.currentBank][pad.currentTrack][step] = 0
 	} else {
-		if err := pad.Light(x, y, launchpad.Color{Green: 3, Red: 0}); err != nil {
-			return errors.Wrap(err, "lighting pad")
+		if err := pad.displayEdit(x, y, launchpad.Color{Green: 0, Red: 0}); err != nil {
+			return errors.Wrap(err, "toggling button")
 		}
-		pad.tracks[pad.currentBank][pad.currentTrack][step] = 3
 	}
 	return nil
 }
@@ -281,3 +356,8 @@ func (pos *Pos) Increment() {
 	}
 	pos.X++
 }
+
+const (
+	ModeEdit = iota
+	ModeLive
+)
