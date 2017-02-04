@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"path/filepath"
 	"time"
 
@@ -40,15 +41,20 @@ func NewSamples(ctx context.Context, dir string) (*Samples, error) {
 		LoadedChan: make(chan struct{}),
 		SampleChan: make(chan int, NumTracks*NumTracks),
 		ctx:        gctx,
+		dir:        dir,
 		sc:         client,
 		scg:        scgroup,
 	}
 	if err := s.sc.SendDef(def); err != nil {
 		return nil, errors.Wrap(err, "sending synthdef")
 	}
+	log.Println("sent synthdef")
+
 	if err := s.loadSamples(); err != nil {
 		return nil, errors.Wrap(err, "loading samples")
 	}
+	log.Println("loaded samples")
+
 	return s, nil
 }
 
@@ -61,12 +67,17 @@ func (s *Samples) load(bufnum int32, sample string) error {
 	if _, err := s.sc.ReadBuffer(samplePath, bufnum); err != nil {
 		return errors.Wrap(err, "reading buffer")
 	}
+	log.Printf("loaded %s\n", samplePath)
+
 	return nil
 }
 
 // loadSamples loads all the wav files in the current directory.
 func (s *Samples) loadSamples() error {
-	samples, err := filepath.Glob(filepath.Join(s.dir, "*.wav"))
+	log.Printf("loading samples from dir %s\n", s.dir)
+	glob := filepath.Join(s.dir, "*.wav")
+	log.Printf("loading samples with glob %s\n", glob)
+	samples, err := filepath.Glob(glob)
 	if err != nil {
 		return errors.Wrap(err, "listing files with wildcard pattern")
 	}
