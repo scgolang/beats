@@ -1,5 +1,5 @@
-hash: 470b1fff7f1f7b0f73d2751d1bac48c8c954460c0b92cf0cae3215495cf2a398
-updated: 2017-02-04T14:19:16.932313744-06:00
+hash: c1697f98998726d43a9d8b3947af8306c6226dd0e2250e1947e7242e9af4879e
+updated: 2017-02-04T14:46:27.893784014-06:00
 imports:
 - name: github.com/awalterschulze/gographviz
   version: 057e6a5e9343c1e85264a73798ca7c7a197c8b69
@@ -9,6 +9,8 @@ imports:
   - lexer
   - parser
   - token
+- name: github.com/chzyer/readline
+  version: eef24db1d59cac55d773312ab6efe1890187f2de
 - name: github.com/pkg/errors
   version: 645ef00459ed84a119197bfb8d8205042c6df63d
 - name: github.com/scgolang/launchpad
