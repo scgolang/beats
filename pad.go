@@ -33,18 +33,18 @@ type Launchpad struct {
 	*errgroup.Group
 
 	ctx          context.Context
-	currentBank  int // 8 sample banks
-	currentTrack int
+	currentBank  uint8 // 8 sample banks
+	currentTrack uint8
 	initialTempo float64
 	periodChan   chan time.Duration
 	samplesChan  chan int
 	tickChan     chan *Pos
-	tracks       [NumBanks][NumTracks][MaxSteps]int
+	tracks       [NumBanks][NumTracks][MaxSteps]uint8
 }
 
 // OpenLaunchpad opens a connection to a launchpad.
-func OpenLaunchpad(ctx context.Context, samplesChan chan int, initialTempo float64) (*Launchpad, error) {
-	padBase, err := launchpad.Open()
+func OpenLaunchpad(ctx context.Context, deviceID string, samplesChan chan int, initialTempo float64) (*Launchpad, error) {
+	padBase, err := launchpad.Open(deviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,8 @@ func (pad *Launchpad) LightCurrentTrack() error {
 
 	for i := 0; i < MaxSteps; i++ {
 		color := pad.tracks[pad.currentBank][pad.currentTrack][i]
-		if err := pad.Light(pos.X, pos.Y, color, 0); err != nil {
+
+		if err := pad.Light(pos.X, pos.Y, launchpad.Color{Green: color, Red: 0}); err != nil {
 			log.Printf("error lighting pad: %s\n", err)
 			return err
 		}
@@ -84,8 +85,13 @@ func (pad *Launchpad) LightCurrentTrack() error {
 
 // listen is an infinite loop that listens for touch events on the launchpad.
 func (pad *Launchpad) listen() error {
+	hits, err := pad.Hits()
+	if err != nil {
+		return err
+	}
+
 HitLoop:
-	for hit := range pad.Listen() {
+	for hit := range hits {
 		x, y := hit.X, hit.Y
 
 		if y == Ymax {
@@ -109,7 +115,7 @@ HitLoop:
 	return nil
 }
 
-func (pad *Launchpad) lit(step int) bool {
+func (pad *Launchpad) lit(step uint8) bool {
 	return pad.tracks[pad.currentBank][pad.currentTrack][step] > 0
 }
 
@@ -122,7 +128,7 @@ TickerLoop:
 			x, y         = pos.X, pos.Y
 		)
 		// Light the current button.
-		if err := pad.Light(x, y, 0, 2); err != nil {
+		if err := pad.Light(x, y, launchpad.Color{Green: 0, Red: 2}); err != nil {
 			return errors.Wrap(err, "lighting pad")
 		}
 		if x == prevX && y == prevY {
@@ -135,7 +141,7 @@ TickerLoop:
 			prevColor = pad.tracks[pad.currentBank][pad.currentTrack][prevStep]
 		)
 		// Turn off the previous button.
-		if err := pad.Light(prevX, prevY, prevColor, 0); err != nil {
+		if err := pad.Light(prevX, prevY, launchpad.Color{Green: prevColor, Red: 0}); err != nil {
 			return errors.Wrap(err, "lighting pad")
 		}
 	}
@@ -150,23 +156,23 @@ func (pad *Launchpad) Main() error {
 	return pad.Wait()
 }
 
-func (pad *Launchpad) sampleNum() int {
+func (pad *Launchpad) sampleNum() uint8 {
 	return (NumTracks * pad.currentBank) + pad.currentTrack
 }
 
 // Select selects a track.
-func (pad *Launchpad) Select(bank, track int, trigger bool) error {
+func (pad *Launchpad) Select(bank, track uint8, trigger bool) error {
 	pad.currentBank = bank
 	pad.currentTrack = track
 
 	if trigger {
-		pad.samplesChan <- pad.sampleNum()
+		pad.samplesChan <- int(pad.sampleNum())
 	}
-	if err := pad.Light(pad.currentTrack, 8, 0, 0); err != nil {
+	if err := pad.Light(pad.currentTrack, 8, launchpad.Color{Green: 0, Red: 0}); err != nil {
 		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
-	if err := pad.Light(8, pad.currentBank, 0, 0); err != nil {
+	if err := pad.Light(8, pad.currentBank, launchpad.Color{Green: 0, Red: 0}); err != nil {
 		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
@@ -178,11 +184,11 @@ func (pad *Launchpad) Select(bank, track int, trigger bool) error {
 	if err := pad.LightCurrentTrack(); err != nil {
 		return errors.Wrap(err, "lightning current track")
 	}
-	if err := pad.Light(track, 8, 0, 3); err != nil {
+	if err := pad.Light(track, 8, launchpad.Color{Green: 0, Red: 3}); err != nil {
 		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
-	if err := pad.Light(8, bank, 0, 3); err != nil {
+	if err := pad.Light(8, bank, launchpad.Color{Green: 0, Red: 3}); err != nil {
 		log.Printf("error lighting pad: %s\n", err)
 		return errors.Wrap(err, "lighting button")
 	}
@@ -222,16 +228,16 @@ func (pad *Launchpad) ticker() error {
 }
 
 // toggle toggles a step for the current track.
-func (pad *Launchpad) toggle(x, y int) error {
+func (pad *Launchpad) toggle(x, y uint8) error {
 	step := makeStep(x, y)
 
 	if pad.lit(step) {
-		if err := pad.Light(x, y, 0, 0); err != nil {
+		if err := pad.Light(x, y, launchpad.Color{Green: 0, Red: 0}); err != nil {
 			return errors.Wrap(err, "lighting pad")
 		}
 		pad.tracks[pad.currentBank][pad.currentTrack][step] = 0
 	} else {
-		if err := pad.Light(x, y, 3, 0); err != nil {
+		if err := pad.Light(x, y, launchpad.Color{Green: 3, Red: 0}); err != nil {
 			return errors.Wrap(err, "lighting pad")
 		}
 		pad.tracks[pad.currentBank][pad.currentTrack][step] = 3
@@ -240,7 +246,7 @@ func (pad *Launchpad) toggle(x, y int) error {
 }
 
 // makeStep returns the step for a given (x, y) position
-func makeStep(x, y int) int {
+func makeStep(x, y uint8) uint8 {
 	return (y * Ymax) + x
 }
 
@@ -255,10 +261,10 @@ func bpmToDuration(bpm float64) time.Duration {
 
 // Pos describes the x, y position on the launchpad.
 type Pos struct {
-	PrevX int
-	PrevY int
-	X     int
-	Y     int
+	PrevX uint8
+	PrevY uint8
+	X     uint8
+	Y     uint8
 }
 
 // Increment increments the position.

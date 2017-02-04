@@ -9,20 +9,22 @@ import (
 func main() {
 	var (
 		ctx          = context.Background()
+		deviceID     string
 		initialTempo float64
-		dir          string
+		samplesDir   string
 	)
 	flag.Float64Var(&initialTempo, "t", float64(120), "tempo")
-	flag.StringVar(&dir, "d", "samples", "samples directory")
+	flag.StringVar(&deviceID, "device", "hw:0,0,0", "System-specific MIDI device ID")
+	flag.StringVar(&samplesDir, "samples", "samples", "samples directory")
 	flag.Parse()
 
-	samples, err := NewSamples(ctx, dir)
+	samples, err := NewSamples(ctx, samplesDir)
 	if err != nil {
 		log.Fatal(err)
 	}
 	<-samples.LoadedChan
 
-	pad, err := OpenLaunchpad(ctx, samples.SampleChan, initialTempo)
+	pad, err := OpenLaunchpad(ctx, deviceID, samples.SampleChan, initialTempo)
 	if err != nil {
 		log.Fatal(err)
 	}
