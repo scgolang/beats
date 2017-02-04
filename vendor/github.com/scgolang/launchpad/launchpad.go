@@ -1,157 +1,115 @@
-// Copyright 2013 Google Inc. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-// Package launchpad provides interfaces to talk to
-// Novation Launchpads via MIDI in and out.
+// Package launchpad enables MIDI communication with a Novation Launchpad.
 package launchpad
 
-import (
-	"errors"
-	"strings"
-	"time"
+import "github.com/scgolang/midi"
 
-	"github.com/rakyll/portmidi"
+// Brightness values.
+const (
+	Off uint8 = iota
+	Low
+	Medium
+	Full
 )
 
 // Launchpad represents a device with an input and output MIDI stream.
 type Launchpad struct {
-	inputStream  *portmidi.Stream
-	outputStream *portmidi.Stream
+	*midi.Device
+}
+
+// Button represents a button on the Launchpad.
+type Button [2]int
+
+// Color represents the color of a launcpad button.
+type Color struct {
+	Green uint8
+	Red   uint8
 }
 
 // Hit represents physical touches to Launchpad buttons.
 type Hit struct {
-	X int
-	Y int
+	X uint8
+	Y uint8
 }
 
 // Open opens a connection Launchpad and initializes an input and output
-// stream to the currently connected device. If there are no
-// devices are connected, it returns an error.
-func Open() (*Launchpad, error) {
-	if err := portmidi.Initialize(); err != nil {
+// stream to the currently connected device.
+// The deviceID is a system-specific string.
+//
+// On linux try
+//     amidi -l
+//
+// On mac try using https://github.com/briansorahan/coremidi
+//     coremidi -l
+//
+func Open(deviceID string) (*Launchpad, error) {
+	l := &Launchpad{
+		Device: &midi.Device{
+			Name: deviceID,
+		},
+	}
+	if err := l.Open(); err != nil {
 		return nil, err
 	}
-
-	input, output, err := discover()
-	if err != nil {
-		return nil, err
-	}
-
-	var inStream, outStream *portmidi.Stream
-	if inStream, err = portmidi.NewInputStream(input, 1024); err != nil {
-		return nil, err
-	}
-	if outStream, err = portmidi.NewOutputStream(output, 1024, 0); err != nil {
-		return nil, err
-	}
-	return &Launchpad{inputStream: inStream, outputStream: outStream}, nil
+	return l, nil
 }
 
-// Listen listens the input stream for hits.
-func (l *Launchpad) Listen() <-chan Hit {
-	ch := make(chan Hit)
-	go func(pad *Launchpad, ch chan Hit) {
-		for {
-			// sleep for a while before the new polling tick,
-			// otherwise operation is too intensive and blocking
-			time.Sleep(10 * time.Millisecond)
-			hits, err := pad.Read()
-			if err != nil {
-				continue
-			}
-			for i := range hits {
-				ch <- hits[i]
-			}
-		}
-	}(l, ch)
-	return ch
-}
-
-// Read reads hits from the input stream. It returns max 64 hits for each read.
-func (l *Launchpad) Read() (hits []Hit, err error) {
-	var evts []portmidi.Event
-	if evts, err = l.inputStream.Read(1024); err != nil {
-		return
-	}
-	for _, evt := range evts {
-		if evt.Data2 > 0 {
-			var x, y int64
-			if evt.Status == 176 {
-				// top row button
-				x = evt.Data1 - 104
-				y = 8
-			} else {
-				x = evt.Data1 % 16
-				y = (evt.Data1 - x) / 16
-			}
-			hits = append(hits, Hit{X: int(x), Y: int(y)})
-		}
-	}
-	return
+// Close closes the connection to the launchpad.
+func (l *Launchpad) Close() error {
+	return l.Device.Close()
 }
 
 // Light lights the button at x,y with the given greend and red values.
 // x and y are [0, 8], g and r are [0, 3]
 // Note that x=8 corresponds to the round scene buttons on the right side of the device,
 // and y=8 corresponds to the round automap buttons on the top of the device.
-func (l *Launchpad) Light(x, y, g, r int) error {
-	note := int64(x + 16*y)
-	velocity := int64(16*g + r + 8 + 4)
+func (l *Launchpad) Light(x, y uint8, color Color) error {
+	var (
+		note     = x + 16*y
+		velocity = 16*color.Green + color.Red + 8 + 4
+	)
 	if y >= 8 {
 		return l.lightAutomap(x, velocity)
 	}
-	return l.outputStream.WriteShort(0x90, note, velocity)
+	_, err := l.Write([]byte{0x90, note, velocity})
+	return err
+}
+
+// Hits returns a channel that emits when the launchpad buttons are hit.
+func (l *Launchpad) Hits() (<-chan Hit, error) {
+	packets, err := l.Packets()
+	if err != nil {
+		return nil, err
+	}
+	hits := make(chan Hit)
+	go relayPackets(packets, hits)
+	return hits, nil
 }
 
 // lightAutomap lights the top row of buttons.
-func (l *Launchpad) lightAutomap(x int, velocity int64) error {
-	return l.outputStream.WriteShort(176, int64(x+104), velocity)
+func (l *Launchpad) lightAutomap(x uint8, velocity uint8) error {
+	_, err := l.Write([]byte{176, x + 104, velocity})
+	return err
 }
 
+// Reset turns off all the lights on the launchpad.
 func (l *Launchpad) Reset() error {
-	return l.outputStream.WriteShort(0xb0, 0, 0)
+	_, err := l.Write([]byte{0xb0, 0, 0})
+	return err
 }
 
-func (l *Launchpad) Close() error {
-	portmidi.Terminate()
-	l.inputStream.Close()
-	l.outputStream.Close()
-	return nil
-}
+// relayPackets turns packets into hits.
+func relayPackets(packets <-chan midi.Packet, hits chan<- Hit) {
+	for packet := range packets {
+		var x, y uint8
 
-// discovers the currently connected Launchpad device
-// as a MIDI device.
-func discover() (input portmidi.DeviceID, output portmidi.DeviceID, err error) {
-	in := -1
-	out := -1
-	for i := 0; i < portmidi.CountDevices(); i++ {
-		info := portmidi.Info(portmidi.DeviceID(i))
-		if strings.Contains(info.Name, "Launchpad") {
-			if info.IsInputAvailable {
-				in = i
-			}
-			if info.IsOutputAvailable {
-				out = i
-			}
+		if packet[0] == 176 {
+			// top row button
+			x = packet[1] - 104
+			y = 8
+		} else {
+			x = packet[1] % 16
+			y = (packet[1] - x) / 16
 		}
+		hits <- Hit{X: x, Y: y}
 	}
-	if in == -1 || out == -1 {
-		err = errors.New("launchpad: no launchpad is connected")
-	} else {
-		input = portmidi.DeviceID(in)
-		output = portmidi.DeviceID(out)
-	}
-	return
 }
