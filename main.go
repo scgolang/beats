@@ -4,6 +4,8 @@ import (
 	"context"
 	"flag"
 	"log"
+
+	"github.com/chzyer/readline"
 )
 
 func main() {
@@ -36,7 +38,23 @@ func main() {
 		}
 	}()
 
-	if err := pad.Main(); err != nil {
+	go func() {
+		if err := pad.Main(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	rl, err := readline.New("beats> ")
+	if err != nil {
 		log.Fatal(err)
+	}
+	defer func() { _ = rl.Close() }()
+
+	for {
+		line, err := rl.Readline()
+		if err != nil {
+			log.Fatal(err)
+		}
+		println(line)
 	}
 }
