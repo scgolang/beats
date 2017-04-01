@@ -20,12 +20,12 @@ package gographviz
 
 import (
 	"github.com/awalterschulze/gographviz/ast"
-	"github.com/awalterschulze/gographviz/internal/parser"
+	"github.com/awalterschulze/gographviz/parser"
 )
 
 var _ Interface = NewGraph()
 
-//Interface allows you to parse the graph into your own structure.
+//Implementing this interface allows you to parse the graph into your own structure.
 type Interface interface {
 	SetStrict(strict bool)
 	SetDir(directed bool)
@@ -38,17 +38,12 @@ type Interface interface {
 	String() string
 }
 
-//Parse parses the buffer into a abstract syntax tree representing the graph.
+//Parses the buffer into a abstract syntax tree representing the graph.
 func Parse(buf []byte) (*ast.Graph, error) {
 	return parser.ParseBytes(buf)
 }
 
-//ParseString parses the buffer into a abstract syntax tree representing the graph.
-func ParseString(buf string) (*ast.Graph, error) {
-	return parser.ParseBytes([]byte(buf))
-}
-
-//Read parses and creates a new Graph from the data.
+//Parses and creates a new Graph from the data.
 func Read(buf []byte) (*Graph, error) {
 	st, err := Parse(buf)
 	if err != nil {

@@ -10,15 +10,15 @@ import (
 // udpConn includes exactly the methods we need from *net.UDPConn
 type udpConn interface {
 	net.Conn
+	netWriter
 
 	ReadFromUDP([]byte) (int, *net.UDPAddr, error)
-	SetWriteBuffer(bytes int) error
-	WriteTo([]byte, net.Addr) (int, error)
 }
 
 // UDPConn is an OSC connection over UDP.
 type UDPConn struct {
 	udpConn
+
 	closeChan chan struct{}
 	ctx       context.Context
 	errChan   chan error
@@ -64,17 +64,34 @@ func ListenUDPContext(ctx context.Context, network string, laddr *net.UDPAddr) (
 	return uc.initialize()
 }
 
+// Close closes the udp conn.
+func (conn *UDPConn) Close() error {
+	close(conn.closeChan)
+	return conn.udpConn.Close()
+}
+
+// CloseChan returns a channel that is closed when the connection gets closed.
+func (conn *UDPConn) CloseChan() <-chan struct{} {
+	return conn.closeChan
+}
+
+// Context returns the context associated with the conn.
+func (conn *UDPConn) Context() context.Context {
+	return conn.ctx
+}
+
 // initialize initializes a UDP connection.
 func (conn *UDPConn) initialize() (*UDPConn, error) {
 	if err := conn.udpConn.SetWriteBuffer(bufSize); err != nil {
 		return nil, errors.Wrap(err, "setting write buffer size")
 	}
 	return conn, nil
+
 }
 
-// Context returns the context associated with the conn.
-func (conn *UDPConn) Context() context.Context {
-	return conn.ctx
+// read reads bytes and returns the net.Addr of the sender.
+func (conn *UDPConn) read(data []byte) (int, net.Addr, error) {
+	return conn.ReadFromUDP(data)
 }
 
 // Send sends an OSC message over UDP.
@@ -93,78 +110,11 @@ func (conn *UDPConn) SendTo(addr net.Addr, p Packet) error {
 // Any errors returned from a dispatched method will be returned.
 // Note that this means that errors returned from a dispatcher method will kill your server.
 // If context.Canceled or context.DeadlineExceeded are encountered they will be returned directly.
-func (conn *UDPConn) Serve(dispatcher Dispatcher) error {
-	if dispatcher == nil {
-		return ErrNilDispatcher
-	}
-
-	for addr := range dispatcher {
-		if err := ValidateAddress(addr); err != nil {
-			return err
-		}
-	}
-
-	errChan := make(chan error)
-
-	go func() {
-		for {
-			conn.serve(dispatcher, errChan)
-		}
-	}()
-
-	// If the connection is closed or the context is canceled then stop serving.
-	select {
-	case err := <-errChan:
-		return errors.Wrap(err, "error serving udp")
-	case <-conn.closeChan:
-	case <-conn.ctx.Done():
-		return conn.ctx.Err()
-	}
-	return nil
-}
-
-// serve retrieves OSC packets.
-func (conn *UDPConn) serve(dispatcher Dispatcher, errChan chan error) {
-	data := make([]byte, bufSize)
-
-	_, sender, err := conn.ReadFromUDP(data)
-	if err != nil {
-		errChan <- err
-	}
-
-	switch data[0] {
-	case BundleTag[0]:
-		go func() {
-			bundle, err := ParseBundle(data, sender)
-			if err != nil {
-				errChan <- err
-			}
-			if err := dispatcher.Dispatch(bundle); err != nil {
-				errChan <- errors.Wrap(err, "dispatch bundle")
-			}
-		}()
-	case MessageChar:
-		go func() {
-			msg, err := ParseMessage(data, sender)
-			if err != nil {
-				errChan <- err
-			}
-			if err := dispatcher.Invoke(msg); err != nil {
-				errChan <- errors.Wrap(err, "dispatch message")
-			}
-		}()
-	default:
-		errChan <- ErrParse
-	}
+func (conn *UDPConn) Serve(numWorkers int, dispatcher Dispatcher) error {
+	return serve(conn, numWorkers, dispatcher)
 }
 
 // SetContext sets the context associated with the conn.
 func (conn *UDPConn) SetContext(ctx context.Context) {
 	conn.ctx = ctx
-}
-
-// Close closes the udp conn.
-func (conn *UDPConn) Close() error {
-	close(conn.closeChan)
-	return conn.udpConn.Close()
 }

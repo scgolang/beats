@@ -21,7 +21,7 @@ func TestInvalidAddress(t *testing.T) {
 	}
 	defer func() { _ = server.Close() }() // Best effort.
 
-	if err := server.Serve(Dispatcher{
+	if err := server.Serve(1, Dispatcher{
 		"/[": Method(func(msg Message) error {
 			return nil
 		}),
@@ -37,7 +37,7 @@ func TestDialUDP(t *testing.T) {
 }
 
 func TestDialUDPSetWriteBufferError(t *testing.T) {
-	uc := &UDPConn{udpConn: errConn{}}
+	uc := &UDPConn{udpConn: errUDPConn{}}
 	_, err := uc.initialize()
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -72,7 +72,7 @@ func TestDialUDPContext(t *testing.T) {
 	if c.Context() != ctxTimeout {
 		t.Fatalf("expected %+v to be %+v", ctxTimeout, c.Context())
 	}
-	if err := c.Serve(Dispatcher{}); err != context.DeadlineExceeded {
+	if err := c.Serve(1, Dispatcher{}); err != context.DeadlineExceeded {
 		t.Fatalf("expected context.DeadlineExceeded, got %+v", err)
 	}
 }
@@ -101,7 +101,10 @@ func testUDPServer(t *testing.T, dispatcher Dispatcher) (*UDPConn, *UDPConn, cha
 	errChan := make(chan error)
 
 	go func() {
-		errChan <- server.Serve(dispatcher)
+		if err := server.Serve(1, dispatcher); err != nil {
+			errChan <- err
+		}
+		close(errChan)
 	}()
 
 	raddr, err := net.ResolveUDPAddr("udp", server.LocalAddr().String())
@@ -125,16 +128,16 @@ func TestUDPConnSend_OK(t *testing.T) {
 	}
 }
 
-// errConn is an implementation of the udpConn interface that returns errors from all it's methods.
-type errConn struct {
+// errUDPConn is an implementation of the udpConn interface that returns errors from all it's methods.
+type errUDPConn struct {
 	udpConn
 }
 
-func (e errConn) ReadFromUDP(b []byte) (int, *net.UDPAddr, error) {
+func (e errUDPConn) ReadFromUDP(b []byte) (int, *net.UDPAddr, error) {
 	return 0, nil, errors.New("oops")
 }
 
-func (e errConn) SetWriteBuffer(bytes int) error {
+func (e errUDPConn) SetWriteBuffer(bytes int) error {
 	return errors.New("derp")
 }
 
@@ -151,7 +154,7 @@ func TestUDPConnServe_ContextTimeout(t *testing.T) {
 	}
 	errChan := make(chan error)
 	go func() {
-		errChan <- server.Serve(Dispatcher{})
+		errChan <- server.Serve(1, Dispatcher{})
 	}()
 	select {
 	case <-time.After(200 * time.Millisecond):
@@ -176,11 +179,11 @@ func TestUDPConnServe_ReadError(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := &UDPConn{
-		udpConn: errConn{udpConn: serverConn},
+		udpConn: errUDPConn{udpConn: serverConn},
 		ctx:     context.Background(),
 	}
 	go func() {
-		errChan <- server.Serve(Dispatcher{
+		errChan <- server.Serve(1, Dispatcher{
 			"/close": Method(func(msg Message) error {
 				return server.Close()
 			}),
@@ -214,7 +217,7 @@ func TestUDPConnServe_NilDispatcher(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := server.Serve(nil); err == nil {
+	if err := server.Serve(1, nil); err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
@@ -234,6 +237,8 @@ func TestUDPConnServe_BadInboundAddr(t *testing.T) {
 		if err := conn.Send(packet); err != nil {
 			t.Fatal(err)
 		}
+		t.Logf("sent message %s", string(packet.Bytes()))
+
 		if err := <-errChan; err == nil {
 			t.Fatalf("(packet %d) expected error, got nil", i)
 		}

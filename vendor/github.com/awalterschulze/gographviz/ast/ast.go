@@ -22,7 +22,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/awalterschulze/gographviz/internal/token"
+	"github.com/awalterschulze/gographviz/token"
 )
 
 var (

@@ -2,20 +2,20 @@ package sc
 
 // UGen done actions, see http://doc.sccode.org/Reference/UGen-doneActions.html
 const (
-	DoNothing             = 0
-	Pause                 = 1
-	FreeEnclosing         = 2
-	FreePreceding         = 3
-	FreeFollowing         = 4
-	FreePrecedingGroup    = 5
-	FreeFollowingGroup    = 6
-	FreeAllPreceding      = 7
-	FreeAllFollowing      = 8
-	FreeAndPausePreceding = 9
-	FreeAndPauseFollowing = 10
-	DeepFreePreceding     = 11
-	DeepFreeFollowing     = 12
-	FreeAllInGroup        = 13
+	DoNothing = iota
+	Pause
+	FreeEnclosing
+	FreePreceding
+	FreeFollowing
+	FreePrecedingGroup
+	FreeFollowingGroup
+	FreeAllPreceding
+	FreeAllFollowing
+	FreeAndPausePreceding
+	FreeAndPauseFollowing
+	DeepFreePreceding
+	DeepFreeFollowing
+	FreeAllInGroup
 	// I do not understand the difference between the last and
 	// next-to-last options [bps]
 )
@@ -65,6 +65,11 @@ func (un *UgenNode) IsOutput() {
 	}
 }
 
+// Max computes the maximum of one Input and another.
+func (un *UgenNode) Max(other Input) Input {
+	return BinOpMax(un.rate, un, other, un.numOutputs)
+}
+
 // Mul multiplies the ugen node by an input.
 func (un *UgenNode) Mul(val Input) Input {
 	return BinOpMul(un.rate, un, val, un.numOutputs)
@@ -78,6 +83,11 @@ func (un *UgenNode) Add(val Input) Input {
 // MulAdd multiplies and adds inputs to a ugen node.
 func (un *UgenNode) MulAdd(mul, add Input) Input {
 	return MulAdd(un.rate, un, mul, add, un.numOutputs)
+}
+
+// SoftClip adds distortion to a ugen.
+func (un *UgenNode) SoftClip() Input {
+	return UnaryOpSoftClip(un.rate, un, un.numOutputs)
 }
 
 // NewUgenNode is a factory function for creating new UgenNode instances.

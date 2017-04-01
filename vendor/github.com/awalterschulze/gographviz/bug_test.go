@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/awalterschulze/gographviz/ast"
-	"github.com/awalterschulze/gographviz/internal/parser"
+	"github.com/awalterschulze/gographviz/parser"
 )
 
 type bugSubGraphWorldVisitor struct {

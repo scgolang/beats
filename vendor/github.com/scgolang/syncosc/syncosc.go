@@ -3,6 +3,7 @@
 package syncosc
 
 import (
+	"context"
 	"time"
 
 	"github.com/pkg/errors"
@@ -57,3 +58,13 @@ func PulseFromMessage(m osc.Message) (Pulse, error) {
 	p.Count = count
 	return p, nil
 }
+
+// Slave is any type that can sync to an oscsync master.
+// The slave's Pulse method will be invoked every time a new pulse is received
+// from the oscsync master.
+type Slave interface {
+	Pulse(Pulse) error
+}
+
+// ConnectorFunc connects a slave to an oscsync server.
+type ConnectorFunc func(ctx context.Context, slave Slave, host string) error

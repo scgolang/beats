@@ -22,7 +22,7 @@ import (
 	"os"
 
 	"github.com/awalterschulze/gographviz/ast"
-	"github.com/awalterschulze/gographviz/internal/lexer"
+	"github.com/awalterschulze/gographviz/lexer"
 )
 
 //Parses a DOT string and outputs the

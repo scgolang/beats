@@ -1,22 +1,19 @@
 package main
 
 import (
-	"context"
 	"log"
 	"path/filepath"
 
 	"github.com/pkg/errors"
+	"github.com/scgolang/launchpad"
 	"github.com/scgolang/sampler"
 )
+
+const numSlots = 64
 
 // Samples plays back samples.
 type Samples struct {
 	*sampler.Sampler
-
-	LoadedChan chan struct{}
-	SampleChan chan int
-
-	dir string
 }
 
 // NewSamples creates a new sample player.
@@ -26,12 +23,9 @@ func NewSamples(dir, scsynthAddr string) (*Samples, error) {
 		return nil, err
 	}
 	s := &Samples{
-		Sampler:    samp,
-		LoadedChan: make(chan struct{}),
-		SampleChan: make(chan int),
-		dir:        dir,
+		Sampler: samp,
 	}
-	if err := s.loadSamples(); err != nil {
+	if err := s.loadSamples(dir); err != nil {
 		return nil, errors.Wrap(err, "loading samples")
 	}
 	log.Println("loaded samples")
@@ -40,16 +34,16 @@ func NewSamples(dir, scsynthAddr string) (*Samples, error) {
 }
 
 // loadSamples loads all the wav files in the current directory.
-func (s *Samples) loadSamples() error {
-	log.Printf("loading samples from dir %s\n", s.dir)
-	glob := filepath.Join(s.dir, "*.wav")
+func (s *Samples) loadSamples(dir string) error {
+	log.Printf("loading samples from dir %s\n", dir)
+	glob := filepath.Join(dir, "*.wav")
 	log.Printf("loading samples with glob %s\n", glob)
 	samples, err := filepath.Glob(glob)
 	if err != nil {
 		return errors.Wrap(err, "listing files with wildcard pattern")
 	}
 	for i, sample := range samples {
-		if i >= NumTracks*NumBanks {
+		if i >= numSlots {
 			break
 		}
 		if err := s.Add(i, sample); err != nil {
@@ -59,12 +53,7 @@ func (s *Samples) loadSamples() error {
 	return nil
 }
 
-// Main is the main loop of the sample player.
-func (s *Samples) Main(ctx context.Context) error {
-	for bufnum := range s.SampleChan {
-		if err := s.Play(bufnum, nil); err != nil {
-			return err
-		}
-	}
-	return nil
+// Trigger triggers sample playback from the launchpad sequencer.
+func (s *Samples) Trigger(trig launchpad.Trig) error {
+	return s.Play(int(trig.Track), nil)
 }
