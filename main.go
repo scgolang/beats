@@ -30,6 +30,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if err := pad.Reset(); err != nil {
+		log.Fatal(err)
+	}
 	defer func() { _ = pad.Close() }() // Best effort.
 
 	seq := pad.NewSequencer(syncclient.Connect, "127.0.0.1")
