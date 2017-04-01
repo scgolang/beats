@@ -40,8 +40,8 @@
         },
         {
             "name": "github.com/scgolang/launchpad",
-            "version": "v0.2.3",
-            "revision": "325f313a68d8d1334892bb6771d109b1eac8e6e2",
+            "version": "v0.2.4",
+            "revision": "f79d020c5cb68f2a482f1751fffc5099e1008ca5",
             "packages": [
                 "."
             ]
