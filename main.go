@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/scgolang/launchpad"
-	"github.com/scgolang/syncclient"
+	"github.com/scgolang/syncosc"
 )
 
 func main() {
@@ -35,7 +35,7 @@ func main() {
 	}
 	defer func() { _ = pad.Close() }() // Best effort.
 
-	seq := pad.NewSequencer(syncclient.Connect, "127.0.0.1")
+	seq := pad.NewSequencer(syncosc.Ticker, "127.0.0.1")
 
 	if err := seq.SetResolution(resolution); err != nil {
 		log.Fatal(err)

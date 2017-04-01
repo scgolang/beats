@@ -68,3 +68,28 @@ type Slave interface {
 
 // ConnectorFunc connects a slave to an oscsync server.
 type ConnectorFunc func(ctx context.Context, slave Slave, host string) error
+
+// Ticker runs a ticker that triggers the slave.
+// This func blocks forever.
+func Ticker(ctx context.Context, slave Slave, host string) error {
+	var (
+		count = int32(0)
+		tempo = float32(120)
+		tk    = time.NewTicker(GetPulseDuration(tempo))
+	)
+	for {
+		select {
+		case <-tk.C:
+			if err := slave.Pulse(Pulse{
+				Count: count,
+				Tempo: tempo,
+			}); err != nil {
+				return err
+			}
+			count++
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}

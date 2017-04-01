@@ -53,6 +53,11 @@ func (s *Samples) loadSamples(dir string) error {
 	return nil
 }
 
+// Track is triggered when a new track is selected on the launchpad.
+func (s *Samples) Track(track uint8) error {
+	return s.Play(int(track), nil)
+}
+
 // Trig triggers sample playback from the launchpad sequencer.
 func (s *Samples) Trig(step uint8, trigs []launchpad.Trig) error {
 	for _, trig := range trigs {

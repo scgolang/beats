@@ -88,8 +88,8 @@
         },
         {
             "name": "github.com/scgolang/syncosc",
-            "version": "v0.1.6",
-            "revision": "f806a1d3fea362351b58ad6f8ac60ee1e860deb7",
+            "version": "v0.1.7",
+            "revision": "09ebfa0eda0b45df7db04d43d46cabb316ee05d6",
             "packages": [
                 "."
             ]
