@@ -53,7 +53,14 @@ func (s *Samples) loadSamples(dir string) error {
 	return nil
 }
 
-// Trigger triggers sample playback from the launchpad sequencer.
-func (s *Samples) Trigger(trig launchpad.Trig) error {
-	return s.Play(int(trig.Track), nil)
+// Trig triggers sample playback from the launchpad sequencer.
+func (s *Samples) Trig(step uint8, trigs []launchpad.Trig) error {
+	for _, trig := range trigs {
+		if trig.Value > 0 {
+			if err := s.Play(int(trig.Track), nil); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
