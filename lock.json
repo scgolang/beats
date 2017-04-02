@@ -1,5 +1,5 @@
 {
-    "memo": "59ff17f693738c7d69f49bb0d653bd0410a362eda97c0be095b6a307fc0a7b80",
+    "memo": "3de8104847b560fcd7654fb5a7007ef03d1fb3b4d3584627ef5167bea649b52f",
     "projects": [
         {
             "name": "github.com/awalterschulze/gographviz",
@@ -40,8 +40,8 @@
         },
         {
             "name": "github.com/scgolang/launchpad",
-            "version": "v0.2.4",
-            "revision": "f79d020c5cb68f2a482f1751fffc5099e1008ca5",
+            "version": "v0.2.6",
+            "revision": "82cb368e7010b34ba0b5db586d1c06c6c8885d16",
             "packages": [
                 "."
             ]
