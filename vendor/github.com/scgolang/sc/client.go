@@ -169,7 +169,7 @@ func (c *Client) Connect(addr string, timeout time.Duration) error {
 			err   error
 		)
 		for time.Now().Sub(start) < timeout {
-			err = c.oscConn.Serve(c.oscHandlers())
+			err = c.oscConn.Serve(8, c.oscHandlers()) // Arbitrary number of worker routines.
 			if err != nil {
 				time.Sleep(100 * time.Second)
 				continue
@@ -278,6 +278,39 @@ func (c *Client) Synth(defName string, id, action, target int32, ctls map[string
 		return nil, err
 	}
 	return newSynth(c, defName, id), nil
+}
+
+// SynthArgs contains the arguments necessary to create a synth that is part of a group.
+type SynthArgs struct {
+	DefName string
+	ID      int32
+	Action  int32
+	Target  int32
+	Ctls    map[string]float32
+}
+
+// Synths creates multiple synth nodes at once with an OSC bundle.
+func (c *Client) Synths(args []SynthArgs) error {
+	bun := osc.Bundle{
+		Packets: make([]osc.Packet, len(args)),
+	}
+	for i, arg := range args {
+		msg := osc.Message{
+			Address: synthNewAddress,
+			Arguments: osc.Arguments{
+				osc.String(arg.DefName),
+				osc.Int(arg.ID),
+				osc.Int(arg.Action),
+				osc.Int(arg.Target),
+			},
+		}
+		for k, v := range arg.Ctls {
+			msg.Arguments = append(msg.Arguments, osc.String(k))
+			msg.Arguments = append(msg.Arguments, osc.Float(v))
+		}
+		bun.Packets[i] = msg
+	}
+	return c.oscConn.Send(bun)
 }
 
 // Group creates a group.
@@ -453,19 +486,19 @@ func (c *Client) FreeAll(gids ...int32) error {
 
 // addOscHandlers adds OSC handlers
 func (c *Client) oscHandlers() osc.Dispatcher {
-	return map[string]osc.Method{
-		statusReplyAddress: func(msg osc.Message) error {
+	return map[string]osc.MessageHandler{
+		statusReplyAddress: osc.Method(func(msg osc.Message) error {
 			c.statusChan <- msg
 			return nil
-		},
-		doneOscAddress: func(msg osc.Message) error {
+		}),
+		doneOscAddress: osc.Method(func(msg osc.Message) error {
 			c.doneChan <- msg
 			return nil
-		},
-		gqueryTreeReplyAddress: func(msg osc.Message) error {
+		}),
+		gqueryTreeReplyAddress: osc.Method(func(msg osc.Message) error {
 			c.gqueryTreeChan <- msg
 			return nil
-		},
+		}),
 	}
 }
 

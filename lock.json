@@ -1,0 +1,114 @@
+{
+    "memo": "3de8104847b560fcd7654fb5a7007ef03d1fb3b4d3584627ef5167bea649b52f",
+    "projects": [
+        {
+            "name": "github.com/awalterschulze/gographviz",
+            "version": "v1.1",
+            "revision": "9d8c9780eb4766351ae8489f78cb940cb6e0503d",
+            "packages": [
+                ".",
+                "ast",
+                "errors",
+                "lexer",
+                "parser",
+                "token"
+            ]
+        },
+        {
+            "name": "github.com/imdario/go-ulid",
+            "branch": "master",
+            "revision": "80e2735d1c2c2b1d963bccaa2306f67e5f8d5da9",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/mkb218/gosndfile",
+            "branch": "master",
+            "revision": "14851e87aed3b4236528a981f805f969e08ef2f8",
+            "packages": [
+                "sndfile"
+            ]
+        },
+        {
+            "name": "github.com/pkg/errors",
+            "branch": "master",
+            "revision": "ff09b135c25aae272398c51a07235b90a75aa4f0",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/scgolang/launchpad",
+            "version": "v0.2.7",
+            "revision": "014589f8548dac5c3b0a6358cbbc3f5f869e1e89",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/scgolang/midi",
+            "version": "v0.2.0",
+            "revision": "dfadd4211cf395fe7f15c3e2f5107b95df17f3f3",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/scgolang/osc",
+            "version": "v0.9.10",
+            "revision": "973e996e838584d697efc0d60b107dba525a0763",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/scgolang/sampler",
+            "version": "v0.1.1",
+            "revision": "f5e4a7c06707a84dde90aec59cefc0b91039cc06",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/scgolang/sc",
+            "version": "v0.1.3",
+            "revision": "858e786a9a990da00ea1a3e28cbfec98824053af",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/scgolang/syncclient",
+            "version": "v0.2.0",
+            "revision": "797fff52b7525da41270178ffa57d9d45449cc07",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "github.com/scgolang/syncosc",
+            "version": "v0.1.7",
+            "revision": "09ebfa0eda0b45df7db04d43d46cabb316ee05d6",
+            "packages": [
+                "."
+            ]
+        },
+        {
+            "name": "golang.org/x/net",
+            "branch": "master",
+            "revision": "ffcf1bedda3b04ebb15a168a59800a73d6dc0f4d",
+            "packages": [
+                "context"
+            ]
+        },
+        {
+            "name": "golang.org/x/sync",
+            "branch": "master",
+            "revision": "5a06fca2c336a4b2b2fcb45702e8c47621b2aa2c",
+            "packages": [
+                "errgroup"
+            ]
+        }
+    ]
+}

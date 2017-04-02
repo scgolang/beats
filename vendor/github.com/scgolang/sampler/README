@@ -1,0 +1,3 @@
+A sampler that uses SuperCollider for sample playback.
+
+See godocs here: http://godoc.org/github.com/scgolang/sampler
