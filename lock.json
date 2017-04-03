@@ -40,8 +40,8 @@
         },
         {
             "name": "github.com/scgolang/launchpad",
-            "version": "v0.2.7",
-            "revision": "014589f8548dac5c3b0a6358cbbc3f5f869e1e89",
+            "version": "v0.2.8",
+            "revision": "ddb088049fbe2715223497c8ae58ebef99eb3d57",
             "packages": [
                 "."
             ]
@@ -64,8 +64,8 @@
         },
         {
             "name": "github.com/scgolang/sampler",
-            "version": "v0.1.1",
-            "revision": "f5e4a7c06707a84dde90aec59cefc0b91039cc06",
+            "version": "v0.1.2",
+            "revision": "885342dc81a39ddf71cb086afa3b1297e635b4ef",
             "packages": [
                 "."
             ]

@@ -108,11 +108,19 @@ var (
 
 func simpleDef(numChannels int) sc.UgenFunc {
 	return func(params sc.Params) sc.Ugen {
+		ampEnv := sc.EnvGen{
+			Env: sc.EnvPerc{
+				Attack:  params.Add("attack", 0.01),
+				Release: params.Add("release", 2),
+			},
+		}.Rate(sc.KR)
+
 		sig := sc.PlayBuf{
 			NumChannels: numChannels,
 			BufNum:      params.Add("bufnum", 0),
+			Speed:       params.Add("speed", 1),
 			Done:        sc.FreeEnclosing,
-		}.Rate(sc.AR)
+		}.Rate(sc.AR).Mul(ampEnv)
 
 		return sc.Out{
 			Bus:      sc.C(0),

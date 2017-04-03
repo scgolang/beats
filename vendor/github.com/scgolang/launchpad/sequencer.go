@@ -54,6 +54,7 @@ type Sequencer struct {
 	mutes         [gridSize]bool
 	pad           *Launchpad
 	prevStep      uint8
+	resetChan     chan struct{}
 	step          uint8
 	stepSkip      int
 	syncConnector syncosc.ConnectorFunc
@@ -69,6 +70,7 @@ func (l *Launchpad) NewSequencer(syncConnector syncosc.ConnectorFunc, syncHost s
 	return &Sequencer{
 		modeChan:      make(chan Mode, 1),
 		pad:           l,
+		resetChan:     make(chan struct{}, 1),
 		syncConnector: syncConnector,
 		syncHost:      syncHost,
 		tick:          make(chan syncosc.Pulse),
@@ -151,6 +153,69 @@ func (seq *Sequencer) flashStepTriggers() error {
 		}
 	}
 	return nil
+}
+
+// handleMutesPulse handles a pulse while in mutes mode.
+func (seq *Sequencer) handleMutesPulse(count int32) error {
+	if advanced := seq.advance(count); !advanced {
+		return nil
+	}
+	// Flash all the triggered tracks.
+	if err := seq.flashStepTriggers(); err != nil {
+		return err
+	}
+	return seq.invokeTriggers()
+}
+
+// handleMutesTrackHit handles a hit on the track buttons while in mutes mode.
+func (seq *Sequencer) handleMutesHit(hit Hit) error {
+	if hit.Err != nil {
+		return hit.Err
+	}
+	if hit.X == gridX || hit.Y == gridY {
+		if err := seq.setCurrentTrackFrom(hit); err != nil {
+			return err
+		}
+		if err := seq.pad.Reset(); err != nil {
+			return err
+		}
+		if err := seq.lightCurrentTrack(); err != nil {
+			return err
+		}
+		if err := seq.lightMutes(); err != nil {
+			return err
+		}
+		return seq.invokeTriggersTrack()
+	}
+	return seq.toggleMuteFrom(hit)
+}
+
+// handlePatternHit handles a hit while in pattern mode.
+func (seq *Sequencer) handlePatternHit(hit Hit) error {
+	if hit.Err != nil {
+		return hit.Err
+	}
+	if hit.X == gridX || hit.Y == gridY {
+		if err := seq.setCurrentTrackFrom(hit); err != nil {
+			return err
+		}
+		if err := seq.selectPatternTrackFrom(hit); err != nil {
+			return err
+		}
+		return seq.invokeTriggersTrack()
+	}
+	return seq.toggle(hit)
+}
+
+// handlePatternPulse handles a pulse while in pattern mode.
+func (seq *Sequencer) handlePatternPulse(count int32) error {
+	if advanced := seq.advance(count); !advanced {
+		return nil
+	}
+	if err := seq.advanceLights(); err != nil {
+		return err
+	}
+	return seq.invokeTriggers()
 }
 
 // invokeTriggers invokes the sequencer's triggers for the provided step.
@@ -243,41 +308,17 @@ func (seq *Sequencer) loopMutes(ctx context.Context, hits <-chan Hit) (Mode, err
 		case <-ctx.Done():
 			return 0, ctx.Err()
 		case hit := <-hits:
-			if hit.Err != nil {
-				return 0, hit.Err
+			if err := seq.handleMutesHit(hit); err != nil {
+				return 0, err
 			}
-			if hit.X == gridX || hit.Y == gridY {
-				if err := seq.setCurrentTrackFrom(hit); err != nil {
-					return 0, err
-				}
-				if err := seq.pad.Reset(); err != nil {
-					return 0, err
-				}
-				if err := seq.lightCurrentTrack(); err != nil {
-					return 0, err
-				}
-				if err := seq.lightMutes(); err != nil {
-					return 0, err
-				}
-				if err := seq.invokeTriggersTrack(); err != nil {
-					return 0, err
-				}
-				continue
-			}
-			if err := seq.toggleMuteFrom(hit); err != nil {
+		case <-seq.resetChan:
+			if err := seq.reset(); err != nil {
 				return 0, err
 			}
 		case mode := <-seq.modeChan:
 			return mode, nil
 		case pulse := <-seq.tick:
-			if advanced := seq.advance(pulse.Count); !advanced {
-				continue
-			}
-			// Flash all the triggered tracks.
-			if err := seq.flashStepTriggers(); err != nil {
-				return 0, err
-			}
-			if err := seq.invokeTriggers(); err != nil {
+			if err := seq.handleMutesPulse(pulse.Count); err != nil {
 				return 0, err
 			}
 		}
@@ -296,34 +337,17 @@ func (seq *Sequencer) loopPattern(ctx context.Context, hits <-chan Hit) (Mode, e
 		case <-ctx.Done():
 			return 0, ctx.Err()
 		case hit := <-hits:
-			if hit.Err != nil {
-				return 0, hit.Err
-			}
-			if hit.X == gridX || hit.Y == gridY {
-				if err := seq.setCurrentTrackFrom(hit); err != nil {
-					return 0, err
-				}
-				if err := seq.selectPatternTrackFrom(hit); err != nil {
-					return 0, err
-				}
-				if err := seq.invokeTriggersTrack(); err != nil {
-					return 0, err
-				}
-				continue
-			}
-			if err := seq.toggle(hit); err != nil {
+			if err := seq.handlePatternHit(hit); err != nil {
 				return 0, err
 			}
 		case mode := <-seq.modeChan:
 			return mode, nil
-		case pulse := <-seq.tick:
-			if advanced := seq.advance(pulse.Count); !advanced {
-				continue
-			}
-			if err := seq.advanceLights(); err != nil {
+		case <-seq.resetChan:
+			if err := seq.reset(); err != nil {
 				return 0, err
 			}
-			if err := seq.invokeTriggers(); err != nil {
+		case pulse := <-seq.tick:
+			if err := seq.handlePatternPulse(pulse.Count); err != nil {
 				return 0, err
 			}
 		}
@@ -383,6 +407,30 @@ func (seq *Sequencer) Pulse(pulse syncosc.Pulse) error {
 // TODO
 func (seq *Sequencer) ReadFrom(r io.Reader) (int64, error) {
 	return 0, nil
+}
+
+// Reset resets the state of the sequencer.
+func (seq *Sequencer) Reset() error {
+	seq.resetChan <- struct{}{}
+	return nil
+}
+
+// reset **actually** resets the state of the sequencer.
+func (seq *Sequencer) reset() error {
+	// Reset pattern data.
+	for track, steps := range seq.tracks {
+		for step := range steps {
+			seq.tracks[track][step] = 0
+		}
+	}
+	// Reset mutes data.
+	for track := range seq.mutes {
+		seq.mutes[track] = false
+	}
+	if err := seq.pad.Reset(); err != nil {
+		return err
+	}
+	return seq.lightCurrentTrack()
 }
 
 // selectPatternTrackFrom selects a track from the provided hit.
