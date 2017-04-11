@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/scgolang/launchpad"
+	"github.com/scgolang/psync"
 )
 
 var (
@@ -21,8 +22,12 @@ func TestMain(m *testing.M) {
 		fmt.Printf("error initializing launchpad: %s\n", err)
 		os.Exit(1)
 	}
-	seq = lp.NewSequencer(mockSyncConnector, "127.0.0.1")
+	seq = lp.NewSequencer(psync.Ticker{})
 
+	if err := seq.SetResolution("16th"); err != nil {
+		fmt.Printf("error initializing launchpad: %s\n", err)
+		os.Exit(1)
+	}
 	code := m.Run()
 
 	_ = lp.Reset()

@@ -6,10 +6,13 @@
         "github.com/scgolang/launchpad": {
             "branch": "master"
         },
-        "github.com/scgolang/sampler": {
+        "github.com/scgolang/osc": {
             "branch": "master"
         },
-        "github.com/scgolang/syncclient": {
+        "github.com/scgolang/psync": {
+            "branch": "master"
+        },
+        "github.com/scgolang/sampler": {
             "branch": "master"
         }
     }

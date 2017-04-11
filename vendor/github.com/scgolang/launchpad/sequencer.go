@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/scgolang/syncosc"
+	"github.com/scgolang/psync"
 )
 
 const (
@@ -50,30 +50,31 @@ type Trigger interface {
 
 // Sequencer is a simple sequencer controlled by a Novation Launchpad.
 type Sequencer struct {
-	modeChan      chan Mode
-	mutes         [gridSize]bool
-	pad           *Launchpad
-	prevStep      uint8
-	resetChan     chan struct{}
-	step          uint8
-	stepSkip      int
-	syncConnector syncosc.ConnectorFunc
-	syncHost      string
-	tick          chan syncosc.Pulse
-	track         uint8
-	tracks        [gridSize][gridSize]uint8 // Track => Step => Value
-	triggers      []Trigger
+	Sync psync.Synchronizer
+
+	modeChan  chan Mode
+	mutes     [gridSize]bool
+	pad       *Launchpad
+	prevStep  uint8
+	resetChan chan struct{}
+	step      uint8
+	stepSkip  int
+	syncHost  string
+	tick      chan psync.Pulse
+	track     uint8
+	tracks    [gridSize][gridSize]uint8 // Track => Step => Value
+	triggers  []Trigger
 }
 
 // NewSequencer creates a new sequencer.
-func (l *Launchpad) NewSequencer(syncConnector syncosc.ConnectorFunc, syncHost string) *Sequencer {
+func (l *Launchpad) NewSequencer(synchronizer psync.Synchronizer) *Sequencer {
 	return &Sequencer{
-		modeChan:      make(chan Mode, 1),
-		pad:           l,
-		resetChan:     make(chan struct{}, 1),
-		syncConnector: syncConnector,
-		syncHost:      syncHost,
-		tick:          make(chan syncosc.Pulse),
+		Sync: synchronizer,
+
+		modeChan:  make(chan Mode, 1),
+		pad:       l,
+		resetChan: make(chan struct{}, 1),
+		tick:      make(chan psync.Pulse),
 	}
 }
 
@@ -365,7 +366,7 @@ func (seq *Sequencer) Main(ctx context.Context) error {
 	// This func could block forever.
 	go func() {
 		ctx, cancel := context.WithCancel(ctx)
-		if err := seq.syncConnector(ctx, seq, seq.syncHost); err != nil {
+		if err := seq.Sync.Synchronize(ctx, seq); err != nil {
 			cancel()
 			fmt.Fprintf(os.Stderr, "connecting to sync source: %s", err.Error())
 		}
@@ -398,7 +399,7 @@ func (seq *Sequencer) Main(ctx context.Context) error {
 }
 
 // Pulse receives pulses from oscsync.
-func (seq *Sequencer) Pulse(pulse syncosc.Pulse) error {
+func (seq *Sequencer) Pulse(pulse psync.Pulse) error {
 	seq.tick <- pulse
 	return nil
 }

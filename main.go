@@ -8,7 +8,7 @@ import (
 
 	"github.com/scgolang/launchpad"
 	"github.com/scgolang/osc"
-	"github.com/scgolang/syncclient"
+	"github.com/scgolang/psync"
 )
 
 func main() {
@@ -56,7 +56,7 @@ func main() {
 	defer func() { _ = pad.Close() }() // Best effort.
 
 	seq := &Sequencer{
-		Sequencer: pad.NewSequencer(syncclient.Connect, "127.0.0.1"),
+		Sequencer: pad.NewSequencer(psync.OSC{Host: "127.0.0.1"}),
 	}
 	if err := seq.SetResolution(resolution); err != nil {
 		log.Fatal(err)

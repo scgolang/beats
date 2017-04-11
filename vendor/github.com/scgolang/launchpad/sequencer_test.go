@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/scgolang/launchpad"
-	"github.com/scgolang/syncosc"
 )
 
 func TestSequencer(t *testing.T) {
@@ -33,25 +32,4 @@ func TestSequencer(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout")
 	}
-}
-
-// mockSyncConnector starts a ticker that pulses at 120 bpm.
-func mockSyncConnector(ctx context.Context, slave syncosc.Slave, host string) error {
-	go func() {
-		const tempo = float32(120)
-
-		for count := int32(0); true; count++ {
-			select {
-			// Multiply by 6 for sixteenth notes.
-			case <-time.NewTicker(syncosc.GetPulseDuration(tempo) * 6).C:
-				_ = slave.Pulse(syncosc.Pulse{
-					Count: count,
-					Tempo: tempo,
-				})
-			case <-ctx.Done():
-				return
-			}
-		}
-	}()
-	return nil
 }

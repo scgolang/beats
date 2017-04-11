@@ -1,10 +1,10 @@
-package syncosc_test
+package psync_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/scgolang/syncosc"
+	"github.com/scgolang/psync"
 )
 
 func TestGetPulseDuration(t *testing.T) {
@@ -18,7 +18,7 @@ func TestGetPulseDuration(t *testing.T) {
 		},
 	} {
 		var (
-			got      = syncosc.GetPulseDuration(testcase.input)
+			got      = psync.GetPulseDuration(testcase.input)
 			expected = testcase.output
 		)
 		if !sufficientlyClose(expected, got) {
